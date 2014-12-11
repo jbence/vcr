@@ -172,14 +172,17 @@ module VCR
 
     def previously_recorded_interactions
       @previously_recorded_interactions ||= if !raw_cassette_bytes.to_s.empty?
-        deserialized_hash['http_interactions'].map { |h| HTTPInteraction.from_hash(h) }.tap do |interactions|
+        deserialized_hash['http_interactions'].tap {|h| log "JBENCE: deserialized_hash size: #{h.size}"}.map { |h| HTTPInteraction.from_hash(h) }.tap do |interactions|
           invoke_hook(:before_playback, interactions)
 
           interactions.reject! do |i|
-            i.request.uri.is_a?(String) && VCR.request_ignorer.ignore?(i.request)
+            (i.request.uri.is_a?(String) && VCR.request_ignorer.ignore?(i.request)).tap do |result|
+              log "JBENCE: rejecting this interaction? #{result}"
+            end
           end
         end
-      else
+                                            else
+                                              log 'JBENCE: raw cassette bytes as a string was EMPTY'
         []
       end
     end
