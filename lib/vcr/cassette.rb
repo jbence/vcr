@@ -230,7 +230,13 @@ module VCR
     end
 
     def raw_cassette_bytes
-      @raw_cassette_bytes ||= VCR::Cassette::ERBRenderer.new(@persister[storage_key], erb, name).render
+      @raw_cassette_bytes ||= VCR::Cassette::ERBRenderer.new(@persister[storage_key].tap {|s|
+        log "JBENCE: Storage Key: #{storage_key}"
+        log "JBENCE: persister class: #{@persister.class}"
+        log "JBENCE: persister details: #{@persister.absolute_path_to_file(storage_key)}"
+        log "JBENCE: persister file exists: #{File.exist?(@persister.absolute_path_to_file(storage_key))}"
+        log "JBENCE: read this many bytes from storage: #{s.nil? ? 'NIL' : s.length}"
+      }, erb, name).render
     end
 
     def merged_interactions
