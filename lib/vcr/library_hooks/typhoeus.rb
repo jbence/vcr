@@ -5,7 +5,7 @@ require 'typhoeus'
 if Float(Typhoeus::VERSION[/^\d+\.\d+/]) < 0.5
   require 'vcr/library_hooks/typhoeus_0.4'
 else
-  VCR::VersionChecker.new('Typhoeus', Typhoeus::VERSION, '0.5.0', '0.6').check_version!
+  VCR::VersionChecker.new('Typhoeus', Typhoeus::VERSION, '0.5.0').check_version!
 
   module VCR
     class LibraryHooks
@@ -23,7 +23,7 @@ else
             @vcr_request ||= VCR::Request.new \
               request.options.fetch(:method, :get),
               request.url,
-              request.options.fetch(:body, ""),
+              request_body,
               request.options.fetch(:headers, {})
           end
 
@@ -50,7 +50,7 @@ else
               :status_message => stubbed_response.status.message,
               :headers        => stubbed_response_headers,
               :body           => stubbed_response.body,
-              :effective_url  => request.url,
+              :effective_url  => stubbed_response.adapter_metadata.fetch('effective_url', request.url),
               :mock           => true
           end
 
@@ -61,6 +61,16 @@ else
               end if stubbed_response.headers
             end
           end
+
+          if ::Typhoeus::Request.method_defined?(:encoded_body)
+            def request_body
+              request.encoded_body
+            end
+          else
+            def request_body
+              request.options.fetch(:body, "")
+            end
+          end
         end
 
         # @private
@@ -69,7 +79,8 @@ else
             VCR::ResponseStatus.new(response.code, response.status_message),
             response.headers,
             response.body,
-            response.http_version
+            response.http_version,
+            { "effective_url" => response.effective_url }
         end
 
         ::Typhoeus.on_complete do |response|

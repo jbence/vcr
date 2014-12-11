@@ -26,13 +26,13 @@ module VCR
 
         describe "#[]=" do
           it 'writes the given file contents to the given file name' do
-            expect(File.exist?(FileSystem.storage_location + '/foo.txt')).to be_false
+            expect(File.exist?(FileSystem.storage_location + '/foo.txt')).to be false
             FileSystem["foo.txt"] = "bar"
             expect(File.read(FileSystem.storage_location + '/foo.txt')).to eq("bar")
           end
 
           it 'creates any needed intermediary directories' do
-            expect(File.exist?(FileSystem.storage_location + '/a')).to be_false
+            expect(File.exist?(FileSystem.storage_location + '/a')).to be false
             FileSystem["a/b"] = "bar"
             expect(File.read(FileSystem.storage_location + '/a/b')).to eq("bar")
           end
@@ -55,6 +55,11 @@ module VCR
 
             expected = File.join(FileSystem.storage_location, "a_1/b")
             expect(FileSystem.absolute_path_to_file("a 1/b")).to eq(expected)
+          end
+
+          it 'handles files with no extensions (even when there is a dot in the path)' do
+            expected = File.join(FileSystem.storage_location, "/foo_bar/baz_qux")
+            expect(FileSystem.absolute_path_to_file("/foo.bar/baz qux")).to eq(expected)
           end
         end
       end

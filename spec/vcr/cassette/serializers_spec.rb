@@ -69,11 +69,18 @@ module VCR
       it_behaves_like "a serializer", :json,  "json", :lazily_loaded do
         engines = {}
 
-        engines[:yajl] = ::MultiJson::DecodeError unless RUBY_INTERPRETER == :jruby
+        if RUBY_INTERPRETER == :jruby
+          # don't test yajl on jruby
+        else
+          engines[:yajl] = MultiJson::LoadError
+        end
 
         if RUBY_VERSION =~ /1.9/
           engines[:json_gem] = EncodingError
-          engines[:json_pure] = EncodingError
+
+          # Disable json_pure for now due to this bug:
+          # https://github.com/flori/json/issues/186
+          # engines[:json_pure] = EncodingError
         end
 
         engines.each do |engine, error|
@@ -114,7 +121,7 @@ module VCR
         context 'when there is already a serializer registered for the given name' do
           before(:each) do
             subject[:foo] = :old_serializer
-            subject.stub :warn
+            allow(subject).to receive :warn
           end
 
           it 'overrides the existing serializer' do
@@ -123,7 +130,7 @@ module VCR
           end
 
           it 'warns that there is a name collision' do
-            subject.should_receive(:warn).with(
+            expect(subject).to receive(:warn).with(
               /WARNING: There is already a VCR cassette serializer registered for :foo\. Overriding it/
             )
             subject[:foo] = :new_serializer

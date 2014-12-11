@@ -20,8 +20,16 @@ module VCR
       "FOO!"
     end
 
+    get '/redirect-to-root' do
+      redirect to('/')
+    end
+
     post '/foo' do
       "FOO!"
+    end
+
+    post '/return-request-body' do
+      request.body
     end
 
     get '/set-cookie-headers/1' do
@@ -36,6 +44,11 @@ module VCR
 
     get '/204' do
       status 204
+    end
+
+    get '/404_not_200' do
+      status 404
+      '404 not 200'
     end
 
     # we use a global counter so that every response is different;

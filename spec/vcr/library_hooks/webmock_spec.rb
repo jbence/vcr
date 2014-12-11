@@ -40,10 +40,10 @@ describe "WebMock hook", :with_monkey_patches => :webmock do
 
     context "when there'ss a bug and the request does not have the @__typed_vcr_request in the after_request callbacks" do
       let(:warner) { VCR::LibraryHooks::WebMock }
-      before { warner.stub(:warn) }
+      before { allow(warner).to receive(:warn) }
 
       it 'records the HTTP interaction properly' do
-        VCR.should_receive(:record_http_interaction) do |i|
+        expect(VCR).to receive(:record_http_interaction) do |i|
           expect(i.request.uri).to eq("http://foo.com/")
           expect(i.response.body).to eq("OK")
         end
@@ -63,7 +63,7 @@ describe "WebMock hook", :with_monkey_patches => :webmock do
       end
 
       it 'prints a warning' do
-        warner.should_receive(:warn).at_least(:once).with(/bug.*after_request/)
+        expect(warner).to receive(:warn).at_least(:once).with(/bug.*after_request/)
 
         run_after_request_callback
       end
@@ -94,29 +94,25 @@ describe "WebMock hook", :with_monkey_patches => :webmock do
       context 'when real connections are disabled and VCR is turned off' do
         it 'can allow connections to localhost' do
           VCR.turn_off!
-          unexpected_error = disable_real_connections(:allow_localhost => true)
+          disable_real_connections(:allow_localhost => true)
 
           expect {
             make_http_request(:get, request_url)
-          }.to_not raise_error(unexpected_error)
+          }.to_not raise_error
         end
 
         it 'can allow connections to matching urls' do
           VCR.turn_off!
-          unexpected_error = disable_real_connections(:allow => /foo/)
+          disable_real_connections(:allow => /foo/)
 
           expect {
             make_http_request(:get, request_url)
-          }.to_not raise_error(unexpected_error)
+          }.to_not raise_error
         end
       end
     end
   end
 
-  it_behaves_like "Excon streaming" do
-    before(:each) do
-      pending "waiting on bblimke/webmock#246 for a fix"
-    end
-  end
+  it_behaves_like "Excon streaming"
 end
 

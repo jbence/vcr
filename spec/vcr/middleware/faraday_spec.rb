@@ -7,8 +7,7 @@ describe VCR::Middleware::Faraday do
   http_libs.each do |lib|
     it_behaves_like 'a hook into an HTTP library', :faraday, "faraday (w/ #{lib})",
       :status_message_not_exposed,
-      :does_not_support_rotating_responses,
-      :not_disableable
+      :does_not_support_rotating_responses
   end
 
   context 'when performing a multipart upload' do
@@ -22,7 +21,7 @@ describe VCR::Middleware::Faraday do
       it 'records the request body correctly' do
         payload = { :file => Faraday::UploadIO.new(__FILE__, 'text/plain') }
 
-        VCR.should_receive(:record_http_interaction) do |i|
+        expect(VCR).to receive(:record_http_interaction) do |i|
           expect(i.request.headers['Content-Type'].first).to include("multipart")
           expect(i.request.body).to include(File.read(__FILE__))
         end
@@ -40,6 +39,35 @@ describe VCR::Middleware::Faraday do
 
     context 'when no adapter is used' do
       test_recording
+    end
+  end
+
+  context 'when extending the response body with an extension module' do
+    let(:connection) { ::Faraday.new("http://localhost:#{VCR::SinatraApp.port}/") }
+
+    def process_response(response)
+      response.body.extend Module.new { attr_accessor :_response }
+      response.body._response = response
+    end
+
+    it 'does not record the body extensions to the cassette' do
+      3.times do |i|
+        VCR.use_cassette("hack", :record => :new_episodes) do
+          response = connection.get("/foo")
+          process_response(response)
+
+          # Do something different after the first time to
+          # ensure new interactions are added to an existing
+          # cassette.
+          if i > 1
+            response = connection.get("/")
+            process_response(response)
+          end
+        end
+      end
+
+      contents = VCR::Cassette.new("hack").send(:raw_cassette_bytes)
+      expect(contents).not_to include("ruby/object:Faraday::Response")
     end
   end
 
@@ -83,7 +111,7 @@ describe VCR::Middleware::Faraday do
 
         make_request
         expect(VCR.library_hooks).not_to be_disabled(:fakeweb)
-        expect(hook_called).to be_true
+        expect(hook_called).to be true
       end
     end
 
@@ -100,9 +128,19 @@ describe VCR::Middleware::Faraday do
       end
     end
 
+    context "when another adapter is exclusive" do
+      it 'still makes requests properly' do
+        response = VCR.library_hooks.exclusively_enabled(:typhoeus) do
+          Faraday.get("http://localhost:#{VCR::SinatraApp.port}/")
+        end
+
+        expect(response.body).to eq("GET to root")
+      end
+    end
+
     context 'for a recorded request' do
       let!(:inserted_cassette) { VCR.insert_cassette('new_cassette') }
-      before(:each) { VCR.should_receive(:record_http_interaction) }
+      before(:each) { expect(VCR).to receive(:record_http_interaction) }
       it_behaves_like "exclusive library hook"
     end
 
@@ -132,7 +170,7 @@ describe VCR::Middleware::Faraday do
       it 'can be used to eject a cassette after the request is recorded' do
         VCR.configuration.after_http_request { |request| VCR.eject_cassette }
 
-        VCR.should_receive(:record_http_interaction) do |interaction|
+        expect(VCR).to receive(:record_http_interaction) do |interaction|
           expect(VCR.current_cassette).to be(inserted_cassette)
         end
 

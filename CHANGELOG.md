@@ -1,8 +1,131 @@
-## Unreleased Changes
+## 2.9.3 (September 7, 2014)
+[Full Changelog](http://github.com/vcr/vcr/compare/v2.9.2...v2.9.3)
 
-[Full Changelog](http://github.com/vcr/vcr/compare/v2.5.0...master)
+Bug Fixes:
 
-* No significant changes.
+* Fix `VCR::Cassette#serializable_hash` so that it does not allow
+  `before_record` hooks to apply mutations to existing HTTPInteraction
+  instances. (Myron Marston)
+
+## 2.9.2 (May 27, 2014)
+[Full Changelog](http://github.com/vcr/vcr/compare/v2.9.1...v2.9.2)
+
+Bug Fixes:
+
+* Fix RSpec metadata integration once more -- we changed it a bit more
+  in response to user feedback. (Myron Marston)
+
+## 2.9.1 (May 23, 2014)
+[Full Changelog](http://github.com/vcr/vcr/compare/v2.9.0...v2.9.1)
+
+Bug Fixes:
+
+* Fix RSpec metadata integration to not trigger deprecation warnings
+  with RSpec 3.0.0.rc1+. (Janko Marohnić)
+
+## 2.9.0 (March 27, 2014)
+
+[Full Changelog](http://github.com/vcr/vcr/compare/v2.8.0...v2.9.0)
+
+Enhancements:
+
+* Update version checking to only assert that a given library is >=
+  a minimum version. (Ryan Foster)
+* Explicitly support the latest Excon release (0.32). (Ryan Foster)
+* Explicitly support the latest Excon release (0.31). (Michiel de Mare)
+* Explicitly support the latest Webmock releases (1.16, 1.17).
+  (Ryan Foster, Lawson Kurtz)
+
+## 2.8.0 (November 23, 2013)
+
+[Full Changelog](http://github.com/vcr/vcr/compare/v2.7.0...v2.8.0)
+
+Enhancements:
+
+* Explicitly support the latest Excon release (0.29). (Myron Marston)
+* Add `:body_as_json` request matcher. (Mike Dalton)
+* Include the body in the `UnhandledHTTPRequestError` message when
+  matching on `:body` to help identify the request. (Chris Gunther)
+
+Bug Fixes:
+
+* Fix Excon adapter so that it properly records responses even when
+  a middleware raises an error (such as via the `:expects` Excon
+  option). Previously, the order `response_call` was invoked on
+  Excon middleware caused VCR's recording ot be skipped when an
+  error was raised by another middleware. To fix this, we have
+  split up VCR Excon middleware into two middlewares that we can
+  insert into the stack at the appropriate spots. Note that to get
+  this to work, Excon < 0.25.2 is no longer supported.
+  (Myron Marston)
+* Fix Excon adapter so that we pass it a dup of the body string
+  rather than the body string itself, since Excon has code paths
+  that will mutate the stubbed response string we give it, wreaking
+  confusing havoc. (Myron Marston)
+* Fix rspec metadata implementation so that it does not emit warnings
+  on RSpec 2.99. (Herman Verschooten)
+
+## 2.7.0 (October 31, 2013)
+
+[Full Changelog](http://github.com/vcr/vcr/compare/v2.6.0...v2.7.0)
+
+Enhancements:
+
+* Explicitly support the latest WebMock releases (1.14 and 1.15).
+  (Eduardo Maia, Johannes Würbach)
+* Explicitly support the latest Excon releases (0.27 and 0.28).
+  (Myron Marston)
+* Add support for Excon unix sockets by leveraging its
+  new `::Excon::Utils.request_uri` method. (Todd Lunter)
+* Reword the "it may not work with this version" warning
+  message so the intent is more clear (Myron Marston).
+* Support post/put bodies being specified as a hash when
+  using Typhoeus by leveraging it's new `encoded_body` API.
+  (Myron Marston, Hans Hasselberg)
+
+Bug Fixes:
+
+* Fix detection of encoding errors for MultiJson 1.8.1+.
+  (Myron Marston).
+* Fix file name sanitization to better handle paths that have
+  a dot in them (Rob Hanlon, Myron Marston).
+* Fix Faraday middleware so that it works properly when another
+  adapter is exclusively enabled (Myron Marston).
+
+## 2.6.0 (September 25, 2013)
+
+[Full Changelog](http://github.com/vcr/vcr/compare/v2.5.0...v2.6.0)
+
+Enhancements:
+
+* Add `VCR::Cassette#originally_recorded_at` for use when freezing
+  time based on when the cassette was recorded. (Myron Marston)
+* Improve the `:allow_unused_http_interactions => false` option
+  so that it does not raise an error when there are unused interactions
+  due to the test failing on its own; otherwise, it could raise
+  an error and silence the original test failure. (Myron Marston)
+* Improve perf when no logger is used by having it short-circuit
+  and not bother formatting a logger message that won't be
+  printed, anyway (Luan Santos and Matt Parker).
+
+Bug Fixes:
+
+* Fix confusing errors that could result when using the YAML serializer
+  if the client code added some state (e.g. via an extension module)
+  onto a request or response body. (Myron Marston)
+* Ensure response body is always recorded when hooking into `:excon`,
+  even when using a `:response_block` and an unexpected status is
+  returned. Excon doesn't invoke the `:response_block` in this case,
+  requiring special handling. (James Bence)
+* Explicitly support the latest WebMock (1.13). (Ron Smith)
+* Explicitly support the latest Excon (0.26). (Myron Marston)
+* Fix detection of encoding errors to handle `ArgumentError` that
+  is raised by recent versions of `MultiJson`. (Myron Marston)
+* Fix Excon adapter so that it allows VCR to play nicely with
+  manual Excon stubs (using Excon's `Excon.stub` API). (Myron Marston)
+* Fix Typhoeus adapter so that it sets `effective_url` properly
+  when the `:followlocation` option is used and a redirect is
+  followed. (Myron Marston)
 
 ## 2.5.0 (May 18, 2013)
 

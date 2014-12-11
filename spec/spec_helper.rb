@@ -1,8 +1,3 @@
-require 'rubygems'
-
-using_git = File.exist?(File.expand_path('../../.git/', __FILE__))
-require 'bundler/setup' if using_git
-
 if RUBY_VERSION.to_f >= 1.9 && RUBY_ENGINE == 'ruby'
   require 'simplecov'
 
@@ -25,8 +20,6 @@ if RUBY_VERSION.to_f >= 1.9 && RUBY_ENGINE == 'ruby'
   end
 end
 
-require 'rspec'
-
 require "support/fixnum_extension"
 require "support/limited_uri"
 require "support/ruby_interpreter"
@@ -41,7 +34,7 @@ require 'monkey_patches'
 require "support/http_library_adapters"
 
 module VCR
-  SPEC_ROOT = File.dirname(__FILE__)
+  SPEC_ROOT = File.dirname(File.expand_path('.', __FILE__))
 
   def reset!(hook = :fakeweb)
     instance_variables.each do |ivar|
@@ -53,15 +46,18 @@ end
 
 RSpec.configure do |config|
   config.order = :rand
-  config.color_enabled = true
-  config.treat_symbols_as_metadata_keys_with_true_values = true
+  config.color = true
 
   config.expect_with :rspec do |expectations|
     expectations.syntax = :expect
   end
 
+  config.mock_with :rspec do |mocks|
+    mocks.syntax = :expect
+  end
+
   tmp_dir = File.expand_path('../../tmp/cassette_library_dir', __FILE__)
-  config.before(:each) do
+  config.before(:each) do |example|
     unless example.metadata[:skip_vcr_reset]
       VCR.reset!
       VCR.configuration.cassette_library_dir = tmp_dir

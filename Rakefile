@@ -1,10 +1,15 @@
 using_git = File.exist?(File.expand_path('../.git/', __FILE__))
 
 if using_git
-  require 'bundler'
   require 'bundler/setup'
+  require 'bundler/gem_helper'
   Bundler::GemHelper.install_tasks
+end
+
+begin
   require 'appraisal'
+rescue LoadError
+  warn "Warning: %s" % $! unless ENV['CI']
 end
 
 require 'rake'
@@ -12,11 +17,6 @@ require "rspec/core/rake_task"
 
 RSpec::Core::RakeTask.new(:spec) do |t|
   t.verbose = false
-
-  # we require spec_helper so we don't get an RSpec warning about
-  # examples being defined before configuration.
-  t.ruby_opts = "-w -I./spec -r./spec/capture_warnings -rspec_helper"
-  t.rspec_opts = %w[--format progress] if (ENV['FULL_BUILD'] || !using_git)
 end
 
 require 'cucumber/rake/task'
@@ -41,33 +41,15 @@ task :check_code_coverage do
     puts "Cannot check code coverage--simplecov is not supported on this platform"
   else
     percent = File.read("./coverage/coverage_percent.txt").to_f
-    if percent < 98.0
+    treshold = 97.9
+    if percent.zero?
+      puts "Warning: code coverage is 0%, which probably means simplecov segfaulted or something."
+    elsif percent < treshold
       abort "Spec coverage was not high enough: #{percent.round(2)}%"
     else
-      puts "Nice job! Spec coverage is still above 98%"
+      puts "Nice job! Spec coverage is still above #{treshold}%"
     end
   end
-end
-
-namespace :ci do
-  desc "Sets things up for a ci build on travis-ci.org"
-  task :setup do
-    ENV['TRAVIS'] = 'true'
-    sh "git submodule init"
-    sh "git submodule update"
-  end
-
-  RSpec::Core::RakeTask.new(:spec) do |t|
-    t.verbose = true
-
-    # we require spec_helper so we don't get an RSpec warning about
-    # examples being defined before configuration.
-    t.ruby_opts = "-w -I./spec -r./spec/capture_warnings -rspec_helper"
-    t.rspec_opts = %w[--format progress --backtrace]
-  end
-
-  desc "Run a ci build"
-  task :build => [:setup, :spec, :cucumber, :yard_coverage, :check_code_coverage]
 end
 
 def ensure_relish_doc_symlinked(filename)
@@ -94,20 +76,16 @@ task :relish do
     end
 
     require 'vcr/version'
-    sh "relish versions:add vcr/vcr:#{VCR.version}" if ENV['NEW_RELISH_RELEASE']
+    sh "relish versions:add vcr/vcr:#{VCR.version}" if ENV['NEW_RELISH_RELEASE'] == 'true'
     sh "relish push vcr/vcr:#{VCR.version}"
   end
 end
 
 task :prep_relish_release do
-  ENV['NEW_RELISH_RELEASE'] = 'true'
+  ENV['NEW_RELISH_RELEASE'] ||= 'true'
 end
 
-task :require_ruby_18 do
-  raise "This must be run on Ruby 1.8" unless RUBY_VERSION =~ /^1\.8/
-end
-
-task :release => [:require_ruby_18, :prep_relish_release, :relish]
+task :release => [:prep_relish_release, :relish]
 
 # For gem-test: http://gem-testers.org/
 task :test => :spec

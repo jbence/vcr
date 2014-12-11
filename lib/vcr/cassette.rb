@@ -5,7 +5,7 @@ require 'vcr/cassette/serializers'
 module VCR
   # The media VCR uses to store HTTP interactions for later re-use.
   class Cassette
-    include Logger
+    include Logger::Mixin
 
     # The supported record modes.
     #
@@ -56,9 +56,17 @@ module VCR
     # Ejects the current cassette. The cassette will no longer be used.
     # In addition, any newly recorded HTTP interactions will be written to
     # disk.
-    def eject
+    #
+    # @note This is not intended to be called directly. Use `VCR.eject_cassette` instead.
+    #
+    # @param (see VCR#eject_casssette)
+    # @see VCR#eject_cassette
+    def eject(options = {})
       write_recorded_interactions_to_disk
-      http_interactions.assert_no_unused_interactions! unless @allow_unused_http_interactions
+
+      if should_assert_no_unused_interactions? && !options[:skip_no_unused_interactions_assertion]
+        http_interactions.assert_no_unused_interactions!
+      end
     end
 
     # @private
@@ -108,6 +116,20 @@ module VCR
         "http_interactions" => interactions_to_record.map(&:to_hash),
         "recorded_with"     => "VCR #{VCR.version}"
       }
+    end
+
+    # @return [Time, nil] The `recorded_at` time of the first HTTP interaction
+    #                     or nil if the cassette has no prior HTTP interactions.
+    #
+    # @example
+    #
+    #   VCR.use_cassette("some cassette") do |cassette|
+    #     Timecop.freeze(cassette.originally_recorded_at || Time.now) do
+    #       # ...
+    #     end
+    #   end
+    def originally_recorded_at
+      @originally_recorded_at ||= previously_recorded_interactions.map(&:recorded_at).min
     end
 
   private
@@ -174,13 +196,12 @@ module VCR
 
     def should_re_record?
       return false unless @re_record_interval
-      previously_recorded_at = earliest_interaction_recorded_at
-      return false unless previously_recorded_at
+      return false unless originally_recorded_at
 
       now = Time.now
 
-      (previously_recorded_at + @re_record_interval < now).tap do |value|
-        info = "previously recorded at: '#{previously_recorded_at}'; now: '#{now}'; interval: #{@re_record_interval} seconds"
+      (originally_recorded_at + @re_record_interval < now).tap do |value|
+        info = "previously recorded at: '#{originally_recorded_at}'; now: '#{now}'; interval: #{@re_record_interval} seconds"
 
         if !value
           log "Not re-recording since the interval has not elapsed (#{info})."
@@ -193,16 +214,16 @@ module VCR
       end
     end
 
-    def earliest_interaction_recorded_at
-      previously_recorded_interactions.map(&:recorded_at).min
-    end
-
     def should_stub_requests?
       record_mode != :all
     end
 
     def should_remove_matching_existing_interactions?
       record_mode == :all
+    end
+
+    def should_assert_no_unused_interactions?
+      !(@allow_unused_http_interactions || $!)
     end
 
     def raw_cassette_bytes
@@ -223,7 +244,9 @@ module VCR
     end
 
     def interactions_to_record
-      merged_interactions.tap do |interactions|
+      # We deep-dup the interactions by roundtripping them to/from a hash.
+      # This is necessary because `before_record` can mutate the interactions.
+      merged_interactions.map { |i| HTTPInteraction.from_hash(i.to_hash) }.tap do |interactions|
         invoke_hook(:before_record, interactions)
       end
     end

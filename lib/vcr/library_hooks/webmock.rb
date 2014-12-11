@@ -2,7 +2,7 @@ require 'vcr/util/version_checker'
 require 'vcr/request_handler'
 require 'webmock'
 
-VCR::VersionChecker.new('WebMock', WebMock.version, '1.8.0', '1.13').check_version!
+VCR::VersionChecker.new('WebMock', WebMock.version, '1.8.0').check_version!
 
 module VCR
   class LibraryHooks
@@ -114,7 +114,7 @@ module VCR
 
         def on_stubbed_by_vcr_request
           {
-            :body    => stubbed_response.body,
+            :body    => stubbed_response.body.dup, # Excon mutates the body, so we must dup it :-(
             :status  => [stubbed_response.status.code.to_i, stubbed_response.status.message],
             :headers => stubbed_response.headers
           }

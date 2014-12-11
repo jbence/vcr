@@ -7,19 +7,6 @@ gem install bundler
 bundle install
 ```
 
-Next setup the Git submodules:
-
-```console
-git submodule init
-git submodule update
-```
-
-or using the single command form
-
-```console
-git submodule update --init
-```
-
 You should be able to run the tests now:
 
 ```console
@@ -37,10 +24,3 @@ If you get an error while running `bundle install`, it may be one of the "extras
 ```console
 bundle install --without extras
 ```
-
-If you are getting an error installing `rb-fsevent` gem, you may want to temporarily change the Gemfile to use the pre-release version of the gem.
-
-```ruby
-gem 'rb-fsevent', '0.9.0.pre4'
-```
-

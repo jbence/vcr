@@ -2,45 +2,50 @@ require 'excon'
 require 'vcr/request_handler'
 require 'vcr/util/version_checker'
 
-VCR::VersionChecker.new('Excon', Excon::VERSION, '0.22.0', '0.22').check_version!
+VCR::VersionChecker.new('Excon', Excon::VERSION, '0.25.2').check_version!
 
 module VCR
   # Contains middlewares for use with different libraries.
   module Middleware
-    # Excon middleware that uses VCR to record and replay HTTP requests made
-    # through Excon.
-    #
-    # @note You can either add this to the middleware stack of an Excon connection
-    #   yourself, or configure {VCR::Configuration#hook_into} to hook into `:excon`.
-    #   Setting the config option will add this middleware to Excon's default
-    #   middleware stack.
-    class Excon < ::Excon::Middleware::Base
+    # Contains Excon middlewares.
+    module Excon
+      # One part of the Excon middleware that uses VCR to record
+      # and replay HTTP requests made through Excon.
+      #
       # @private
-      def initialize(*args)
-        # Excon appears to create a new instance of this middleware for each
-        # request, which means it should be safe to store per-request state
-        # like this request_handler object on the middleware instance.
-        # I'm not 100% sure about this yet and should verify with @geemus.
-        @request_handler = RequestHandler.new
-        super
+      class Request < ::Excon::Middleware::Base
+        # @private
+        def request_call(params)
+          params[:vcr_request_handler] = request_handler = RequestHandler.new
+          request_handler.before_request(params)
+
+          super
+        end
       end
 
+      # One part of the Excon middleware that uses VCR to record
+      # and replay HTTP requests made through Excon.
+      #
       # @private
-      def request_call(params)
-        @request_handler.before_request(params)
-        super
-      end
+      class Response < ::Excon::Middleware::Base
+        # @private
+        def response_call(params)
+          complete_request(params)
+          super
+        end
 
-      # @private
-      def response_call(params)
-        @request_handler.after_request(params)
-        super
-      end
+        def error_call(params)
+          complete_request(params)
+          super
+        end
 
-      # @private
-      def error_call(params)
-        @request_handler.after_request(params)
-        super
+      private
+
+        def complete_request(params)
+          if handler = params.delete(:vcr_request_handler)
+            handler.after_request(params[:response])
+          end
+        end
       end
 
       # Handles a single Excon request.
@@ -49,7 +54,6 @@ module VCR
       class RequestHandler < ::VCR::RequestHandler
         def initialize
           @request_params       = nil
-          @response_params      = nil
           @response_body_reader = nil
           @should_record        = false
         end
@@ -64,18 +68,11 @@ module VCR
           handle
         end
 
-        # Performs after_request processing based on the provided
-        # response_params.
+        # Performs after_request processing based on the provided response.
         #
         # @private
-        def after_request(response_params)
-          # If @response_params is already set, it indicates we've already run the
-          # after_request logic. This can happen when if the response triggers an error,
-          # whch would then trigger the error_call middleware callback, leading to this
-          # being called a second time.
-          return if @response_params
-
-          @response_params = response_params
+        def after_request(response)
+          vcr_response = vcr_response_for(response)
 
           if should_record?
             VCR.record_http_interaction(VCR::HTTPInteraction.new(vcr_request, vcr_response))
@@ -84,9 +81,20 @@ module VCR
           invoke_after_request_hook(vcr_response)
         end
 
-        attr_reader :request_params, :response_params, :response_body_reader
+        def ensure_response_body_can_be_read_for_error_case
+          # Excon does not invoke the `:response_block` when an error
+          # has occurred, so we need to be sure to use the non-streaming
+          # body reader.
+          @response_body_reader = NonStreamingResponseBodyReader
+        end
+
+        attr_reader :request_params, :response_body_reader
 
       private
+
+        def externally_stubbed?
+          !!::Excon.stub_for(request_params)
+        end
 
         def should_record?
           @should_record
@@ -94,7 +102,7 @@ module VCR
 
         def on_stubbed_by_vcr_request
           request_params[:response] = {
-            :body     => stubbed_response.body,
+            :body     => stubbed_response.body.dup, # Excon mutates the body, so we must dup it :-(
             :headers  => normalized_headers(stubbed_response.headers || {}),
             :status   => stubbed_response.status.code
           }
@@ -126,21 +134,15 @@ module VCR
           end
         end
 
-        def vcr_response
-          return @vcr_response if defined?(@vcr_response)
+        def vcr_response_for(response)
+          return nil if response.nil?
 
-          if should_record? || response_params.has_key?(:response)
-            response = response_params.fetch(:response)
-
-            @vcr_response = VCR::Response.new(
-              VCR::ResponseStatus.new(response.fetch(:status), nil),
-              response.fetch(:headers),
-              response_body_reader.read_body_from(response),
-              nil
-            )
-          else
-            @vcr_response = nil
-          end
+          VCR::Response.new(
+            VCR::ResponseStatus.new(response.fetch(:status), nil),
+            response.fetch(:headers),
+            response_body_reader.read_body_from(response),
+            nil
+          )
         end
 
         def normalized_headers(headers)
@@ -152,30 +154,16 @@ module VCR
           normalized
         end
 
-        def uri
-          @uri ||= "#{request_params[:scheme]}://#{request_params[:host]}:#{request_params[:port]}#{request_params[:path]}#{query}"
-        end
+        if defined?(::Excon::Utils) && ::Excon::Utils.respond_to?(:request_uri)
+          def uri
+            @uri ||= "#{::Excon::Utils.request_uri(request_params)}"
+          end
+        else
+          require 'vcr/middleware/excon/legacy_methods'
+          include LegacyMethods
 
-        # based on:
-        # https://github.com/geemus/excon/blob/v0.7.8/lib/excon/connection.rb#L117-132
-        def query
-          @query ||= case request_params[:query]
-            when String
-              "?#{request_params[:query]}"
-            when Hash
-              qry = '?'
-              for key, values in request_params[:query]
-                if values.nil?
-                  qry << key.to_s << '&'
-                else
-                  for value in [*values]
-                    qry << key.to_s << '=' << CGI.escape(value.to_s) << '&'
-                  end
-                end
-              end
-              qry.chop! # remove trailing '&'
-            else
-              ''
+          def uri
+            @uri ||= "#{request_params[:scheme]}://#{request_params[:host]}:#{request_params[:port]}#{request_params[:path]}#{query}"
           end
         end
       end
@@ -203,7 +191,14 @@ module VCR
         #
         # @private
         def read_body_from(response_params)
-          @chunks.join('')
+          if @chunks.none?
+            # Not sure why, but sometimes the body comes through the params
+            # instead of via the streaming block even when the block was
+            # configured.
+            response_params[:body]
+          else
+            @chunks.join('')
+          end
         end
       end
 
